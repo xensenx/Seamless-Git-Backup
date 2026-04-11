@@ -1,0 +1,165 @@
+/*
+ * styles.css — Seamless Git Backup
+ *
+ * Philosophy:
+ *  - Use Obsidian's CSS variable system for ALL colors, spacing, and radii.
+ *    This guarantees the plugin looks correct in every community theme and
+ *    in both light and dark modes without any special-casing on our end.
+ *  - Only define styles for elements WE create (prefixed with `.sgb-`).
+ *    Never touch global selectors; that would be rude to other plugins.
+ *  - Keep this file small. Obsidian's built-in component styles (`.setting-item`,
+ *    `.modal`, `Notice`, etc.) already handle the heavy lifting.
+ *
+ * CSS Variable Reference (common Obsidian tokens used here):
+ *  --background-primary         Main panel / modal background
+ *  --background-secondary       Slightly offset background (sidebars, inputs)
+ *  --background-modifier-hover  Hover state tint
+ *  --text-normal                Primary text colour
+ *  --text-muted                 Secondary / de-emphasised text
+ *  --text-accent                Accent / link colour (matches theme accent)
+ *  --interactive-accent         Button / interactive element accent fill
+ *  --interactive-accent-hover   Hover variant of accent fill
+ *  --text-on-accent             Text colour on top of accent background
+ *  --border-color               Subtle border / divider colour
+ *  --radius-s / --radius-m      Consistent corner radii
+ *  --font-ui-smaller            Smaller UI text size
+ *  --code-background            Background for code blocks
+ */
+
+/* ── Settings Tab ─────────────────────────────────────────────────────────── */
+
+/*
+ * Live preview of the resolved commit message template.
+ * Displayed as an <em> element inside the setting description.
+ */
+.sgb-preview-text {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  /* Italics is already applied via <em>; this overrides any theme reset */
+  font-style: italic;
+}
+
+/*
+ * Bullet list of setup requirements shown at the bottom of the settings tab.
+ */
+.sgb-info-list {
+  padding-left: 1.25em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.7;
+  margin-top: 0.25em;
+}
+
+.sgb-info-list li {
+  margin-bottom: 0.3em;
+}
+
+/* ── Notices ──────────────────────────────────────────────────────────────── */
+
+/*
+ * When an error notice is clickable (to open the detail Modal), we add a
+ * subtle visual affordance so the user knows it's interactive.
+ */
+.sgb-notice-clickable {
+  cursor: pointer;
+  /* Underline on hover mimics a link, communicating "click me" */
+}
+
+.sgb-notice-clickable:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* ── Error Detail Modal ───────────────────────────────────────────────────── */
+
+/*
+ * Modal title — slightly larger than default body text, not as heavy as h1.
+ */
+.sgb-modal-title {
+  margin-top: 0;
+  margin-bottom: 0.5em;
+  color: var(--text-normal);
+}
+
+/*
+ * User-friendly summary paragraph at the top of the Modal.
+ */
+.sgb-modal-summary {
+  color: var(--text-normal);
+  margin-bottom: 1em;
+  line-height: 1.5;
+}
+
+/*
+ * Sub-headings inside the Modal ("Technical details", "Common fixes").
+ */
+.sgb-modal-detail-heading {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4em;
+  margin-top: 1.2em;
+}
+
+/*
+ * <pre> block that displays the raw stderr / error message.
+ * Scrollable horizontally so long lines don't break the Modal layout.
+ */
+.sgb-modal-detail-pre {
+  background-color: var(--code-background);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-s);
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  white-space: pre-wrap;       /* Wrap long lines rather than force scroll */
+  word-break: break-word;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  margin: 0 0 0.5em 0;
+  max-height: 200px;           /* Prevent the Modal growing too tall */
+  overflow-y: auto;
+}
+
+.sgb-modal-detail-pre code {
+  /* Reset any inherited code styles so the <pre> styles dominate */
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/*
+ * Troubleshooting tips list inside the Modal.
+ */
+.sgb-modal-tips {
+  padding-left: 1.25em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.7;
+  margin-top: 0.25em;
+}
+
+.sgb-modal-tips li {
+  margin-bottom: 0.3em;
+}
+
+/*
+ * Row that holds the "Close" button at the bottom of the Modal.
+ * Flex end-aligned so the button sits in the bottom-right corner,
+ * matching Obsidian's own dialog patterns.
+ */
+.sgb-modal-button-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.5em;
+}
+
+/*
+ * Close button — inherits Obsidian's `.mod-cta` accent styling.
+ * We only add spacing; the colour and shape come from Obsidian.
+ */
+.sgb-modal-close-btn {
+  padding: 6px 18px;
+}

@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    // Target modern JS that Obsidian's Electron runtime supports
+    "target": "ES2018",
+    "module": "CommonJS",
+    "lib": ["ES2018", "DOM"],
+
+    // Output goes to the root for Obsidian to pick up
+    "outDir": ".",
+    "rootDir": ".",
+
+    // Strict mode: catches real bugs before they reach users
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // Allow Node.js built-ins like child_process
+    "types": ["node"],
+
+    // Module resolution for the obsidian package
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+
+    // Source maps help during development
+    "sourceMap": true,
+    "inlineSources": true,
+
+    // Don't emit broken JS if type-checking fails
+    "noEmitOnError": true,
+
+    // Skip checking .d.ts files inside node_modules (speeds up compilation)
+    "skipLibCheck": true
+  },
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
