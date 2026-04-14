@@ -2,9 +2,9 @@
   "id": "seamless-git-backup",
   "name": "Seamless Git Backup",
   "version": "1.0.0",
-  "minAppVersion": "1.0.0",
-  "description": "One-click Git backup for your Obsidian vault. Stages, commits, and pushes changes using your system Git installation.",
-  "author": "Obsidian Seamless Git Backup",
-  "authorUrl": "https://github.com/your-username/obsidian-seamless-git-backup",
+  "minAppVersion": "1.5.0",
+  "description": "Automatically backup vault changes to Git remotes seamlessly.",
+  "author": "xensenx",
+  "authorUrl": "https://github.com/xensenx",
   "isDesktopOnly": true
 }

@@ -113,6 +113,49 @@ export function showWarningNotice(message: string): void {
   new Notice(`⚠️ ${message}`, NOTICE_DURATION_NORMAL);
 }
 
+/**
+ * Shows a transient "Pull in progress..." notice.
+ * Returned so the caller can dismiss it once the pull completes.
+ */
+export function showPullInProgressNotice(): Notice {
+  return new Notice("⏳ Pulling latest changes…", NOTICE_DURATION_INFO);
+}
+
+/**
+ * Shows a success notice after a pull that fetched new changes.
+ */
+export function showPullSuccessNotice(): void {
+  new Notice("⬇️ Pull complete! Vault updated with latest changes.", NOTICE_DURATION_NORMAL);
+}
+
+/**
+ * Shows a notice when a pull completed but there was nothing new to fetch.
+ */
+export function showPullAlreadyUpToDateNotice(): void {
+  new Notice("✅ Already up-to-date. No new changes from remote.", NOTICE_DURATION_NORMAL);
+}
+
+/**
+ * Shows an error notice after a failed pull, reusing the same
+ * error-resolution logic used for backup failures.
+ */
+export function showPullErrorNotice(error: unknown, app: App): void {
+  const { userMessage, technicalDetail } = resolveErrorContent(error);
+
+  const noticeText = technicalDetail
+    ? `❌ Pull failed: ${userMessage}\n(Click for details)`
+    : `❌ Pull failed: ${userMessage}`;
+
+  const notice = new Notice(noticeText, NOTICE_DURATION_ERROR);
+
+  if (technicalDetail) {
+    notice.noticeEl.addEventListener("click", () => {
+      new GitErrorModal(app, `Pull failed: ${userMessage}`, technicalDetail).open();
+    });
+    notice.noticeEl.addClass("sgb-notice-clickable");
+  }
+}
+
 // ─── Error Content Resolution ─────────────────────────────────────────────────
 
 /**

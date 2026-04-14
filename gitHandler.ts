@@ -82,6 +82,14 @@ export interface GitStatusResult {
   rawStatus: string;
 }
 
+/** Describes the outcome of a `git pull` operation. */
+export interface PullResult {
+  /** True when Git reported "Already up to date." — nothing was fetched. */
+  alreadyUpToDate: boolean;
+  /** Raw stdout from `git pull` for display in notices. */
+  summary: string;
+}
+
 // ─── Internal exec result ─────────────────────────────────────────────────────
 
 interface ExecResult {
@@ -418,6 +426,33 @@ export class GitHandler {
   /** Returns the vault path this handler is bound to. */
   getVaultPath(): string {
     return this.vaultPath;
+  }
+
+  /**
+   * Performs a `git pull` and reports whether new changes arrived.
+   *
+   * We parse stdout for the "Already up to date." string that Git emits when
+   * there is nothing to pull. Any other non-empty stdout means new commits
+   * were fetched and merged into the working tree.
+   *
+   * Why not `git fetch` + `git merge`?
+   * `git pull` is the single command users understand and expect. For a simple
+   * backup/sync workflow with no branching complexity, it is the right tool.
+   *
+   * @returns PullResult describing whether new changes were received.
+   * @throws GitError on network failure, auth failure, merge conflict, etc.
+   */
+  async performPull(): Promise<PullResult> {
+    const stdout = await this.git(["pull"], "NETWORK_ERROR");
+
+    // Git prints "Already up to date." (exactly) when there is nothing new.
+    const alreadyUpToDate = stdout.toLowerCase().includes("already up to date");
+
+    return {
+      alreadyUpToDate,
+      // Surface the raw output so callers can show it in a notice if desired.
+      summary: stdout,
+    };
   }
 }
 

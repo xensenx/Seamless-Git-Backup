@@ -30,6 +30,10 @@ import {
   showNoChangesNotice,
   showBackupErrorNotice,
   showWarningNotice,
+  showPullInProgressNotice,
+  showPullSuccessNotice,
+  showPullAlreadyUpToDateNotice,
+  showPullErrorNotice,
 } from "./uiHandlers";
 
 /**
@@ -55,6 +59,12 @@ export default class SeamlessGitBackupPlugin extends Plugin {
    * executions if the user clicks the ribbon button multiple times quickly.
    */
   private isBackupRunning = false;
+
+  /**
+   * Track whether a pull is currently in progress for the same reason.
+   * Pull and backup are also mutually exclusive — both touch the Git index.
+   */
+  private isPullRunning = false;
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -103,36 +113,60 @@ export default class SeamlessGitBackupPlugin extends Plugin {
 
     this.gitHandler = new GitHandler(vaultPath);
 
-    // ── Ribbon Icon ─────────────────────────────────────────────────────
+    // ── Ribbon Icon (Backup) ─────────────────────────────────────────────
     // The ribbon is the left-hand icon strip. We add a git-commit icon
     // (from the bundled Lucide icon set) as a one-click backup trigger.
     // The aria-label becomes the tooltip text shown on hover.
     this.addRibbonIcon(
-      "git-commit-horizontal", // Lucide icon name bundled with Obsidian
+      "git-commit-horizontal",
       "Seamless Git Backup: Perform backup now",
       (_event: MouseEvent) => {
-        // Fire-and-forget: we use void to silence the "unhandled promise"
-        // lint warning. Errors are caught inside executeBackup().
         void this.executeBackup();
       }
     );
 
-    // ── Command Palette ─────────────────────────────────────────────────
-    // Registers an entry in Obsidian's command palette (Ctrl/Cmd+P).
-    // Users can also bind this to a hotkey in Settings → Hotkeys.
+    // ── Ribbon Icon (Pull) ───────────────────────────────────────────────
+    // A second ribbon icon for manual pull. Uses the `git-pull-request`
+    // Lucide icon to visually distinguish it from the backup/push icon.
+    this.addRibbonIcon(
+      "git-pull-request",
+      "Seamless Git Backup: Pull latest changes",
+      (_event: MouseEvent) => {
+        void this.executePull();
+      }
+    );
+
+    // ── Command Palette (Backup) ─────────────────────────────────────────
     this.addCommand({
       id: "trigger-backup",
-      name: "Perform Git Backup",
-      // `callback` (not `checkCallback`) because this command is always
-      // available on desktop — no context check needed.
+      name: "Perform Git Backup (commit + push)",
       callback: () => {
         void this.executeBackup();
       },
     });
 
+    // ── Command Palette (Pull) ───────────────────────────────────────────
+    this.addCommand({
+      id: "trigger-pull",
+      name: "Pull latest changes from remote",
+      callback: () => {
+        void this.executePull();
+      },
+    });
+
     // ── Settings Tab ────────────────────────────────────────────────────
-    // Registers our custom settings panel under Settings → Plugin Options.
     this.addSettingTab(new SeamlessGitBackupSettingTab(this.app, this));
+
+    // ── Auto-pull on Startup ─────────────────────────────────────────────
+    // Runs AFTER all UI is registered so notices display correctly.
+    // We defer with setTimeout(0) to let Obsidian finish its own startup
+    // routines before we hit the network — avoids competing with vault
+    // index loading and other plugins initialising simultaneously.
+    if (this.settings.pullOnStartup) {
+      setTimeout(() => {
+        void this.executePull({ silent: !this.settings.notifyOnPull });
+      }, 0);
+    }
 
     console.log("[Seamless Git Backup] Plugin loaded successfully.");
   }
@@ -256,6 +290,72 @@ export default class SeamlessGitBackupPlugin extends Plugin {
       // `finally` guarantees this runs whether we succeeded, errored, or
       // returned early — so the guard is always released.
       this.isBackupRunning = false;
+    }
+  }
+
+  // ─── Pull Execution ────────────────────────────────────────────────────────
+
+  /**
+   * Orchestrates a `git pull` with pre-flight checks and UI feedback.
+   *
+   * @param options.silent - When true, suppresses success/up-to-date notices.
+   *   Used for the startup auto-pull so Obsidian opens quietly when there is
+   *   nothing new. Errors are always shown regardless of this flag.
+   */
+  private async executePull(options: { silent?: boolean } = {}): Promise<void> {
+    const { silent = false } = options;
+
+    // ── Concurrency Guard ─────────────────────────────────────────────────
+    // Prevent overlapping pull + pull, or pull during an active backup.
+    if (this.isPullRunning) {
+      showWarningNotice("A pull is already in progress. Please wait.");
+      return;
+    }
+    if (this.isBackupRunning) {
+      showWarningNotice("A backup is in progress. Wait for it to finish before pulling.");
+      return;
+    }
+    this.isPullRunning = true;
+
+    // Only show the in-progress notice for manual pulls — the startup pull
+    // is silent-by-default and should not flash a notice unnecessarily.
+    const progressNotice = silent ? null : showPullInProgressNotice();
+
+    try {
+      // ── Pre-flight checks ───────────────────────────────────────────────
+      await this.gitHandler.checkGitInstallation();
+      await this.gitHandler.checkIfRepo();
+
+      // ── Perform pull ────────────────────────────────────────────────────
+      const result = await this.gitHandler.performPull();
+
+      progressNotice?.hide();
+
+      // Show feedback unless silent mode was requested
+      if (!silent) {
+        if (result.alreadyUpToDate) {
+          showPullAlreadyUpToDateNotice();
+        } else {
+          showPullSuccessNotice();
+        }
+      } else if (!result.alreadyUpToDate) {
+        // Even in silent (startup) mode, notify if changes actually arrived —
+        // the user should know their vault just changed underneath them.
+        showPullSuccessNotice();
+      }
+
+      console.log(
+        `[Seamless Git Backup] Pull complete. Up-to-date: ${result.alreadyUpToDate}`
+      );
+    } catch (error: unknown) {
+      progressNotice?.hide();
+
+      // Errors are always shown — silent mode only suppresses success notices.
+      showPullErrorNotice(error, this.app);
+
+      console.error("[Seamless Git Backup] Pull failed:", error);
+    } finally {
+      this.isPullRunning = false;
     }
   }
 }

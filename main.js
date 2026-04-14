@@ -279,6 +279,29 @@ var GitHandler = class {
   getVaultPath() {
     return this.vaultPath;
   }
+  /**
+   * Performs a `git pull` and reports whether new changes arrived.
+   *
+   * We parse stdout for the "Already up to date." string that Git emits when
+   * there is nothing to pull. Any other non-empty stdout means new commits
+   * were fetched and merged into the working tree.
+   *
+   * Why not `git fetch` + `git merge`?
+   * `git pull` is the single command users understand and expect. For a simple
+   * backup/sync workflow with no branching complexity, it is the right tool.
+   *
+   * @returns PullResult describing whether new changes were received.
+   * @throws GitError on network failure, auth failure, merge conflict, etc.
+   */
+  async performPull() {
+    const stdout = await this.git(["pull"], "NETWORK_ERROR");
+    const alreadyUpToDate = stdout.toLowerCase().includes("already up to date");
+    return {
+      alreadyUpToDate,
+      // Surface the raw output so callers can show it in a notice if desired.
+      summary: stdout
+    };
+  }
 };
 function args_label(code) {
   var _a;
@@ -293,7 +316,9 @@ function args_label(code) {
 var import_obsidian = require("obsidian");
 var DEFAULT_SETTINGS = {
   commitMessageTemplate: "Vault backup: {{date}} at {{time}}",
-  notifyOnNoChanges: true
+  notifyOnNoChanges: true,
+  pullOnStartup: true,
+  notifyOnPull: true
 };
 function resolveCommitMessage(template) {
   const now = /* @__PURE__ */ new Date();
@@ -361,6 +386,27 @@ var SeamlessGitBackupSettingTab = class extends import_obsidian.PluginSettingTab
         await this.plugin.saveSettings();
       })
     );
+    containerEl.createEl("h3", { text: "Pull (Sync from Remote)" });
+    containerEl.createEl("p", {
+      text: "Pull keeps your desktop vault in sync with edits made on other devices (e.g. via the GitHub mobile app).",
+      cls: "setting-item-description"
+    });
+    new import_obsidian.Setting(containerEl).setName("Pull on startup").setDesc(
+      "Automatically run `git pull` every time Obsidian opens. Ensures your vault is up-to-date before you start working."
+    ).addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.pullOnStartup).onChange(async (value) => {
+        this.plugin.settings.pullOnStartup = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Show pull result notice").setDesc(
+      "Show a notice after a pull completes \u2014 whether new changes arrived or the vault was already up-to-date. Disable for a fully silent startup pull."
+    ).addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.notifyOnPull).onChange(async (value) => {
+        this.plugin.settings.notifyOnPull = value;
+        await this.plugin.saveSettings();
+      })
+    );
     containerEl.createEl("h3", { text: "Requirements & Setup" });
     const infoList = containerEl.createEl("ul", { cls: "sgb-info-list" });
     const requirements = [
@@ -408,6 +454,27 @@ function showBackupErrorNotice(error, app) {
 }
 function showWarningNotice(message) {
   new import_obsidian2.Notice(`\u26A0\uFE0F ${message}`, NOTICE_DURATION_NORMAL);
+}
+function showPullInProgressNotice() {
+  return new import_obsidian2.Notice("\u23F3 Pulling latest changes\u2026", NOTICE_DURATION_INFO);
+}
+function showPullSuccessNotice() {
+  new import_obsidian2.Notice("\u2B07\uFE0F Pull complete! Vault updated with latest changes.", NOTICE_DURATION_NORMAL);
+}
+function showPullAlreadyUpToDateNotice() {
+  new import_obsidian2.Notice("\u2705 Already up-to-date. No new changes from remote.", NOTICE_DURATION_NORMAL);
+}
+function showPullErrorNotice(error, app) {
+  const { userMessage, technicalDetail } = resolveErrorContent(error);
+  const noticeText = technicalDetail ? `\u274C Pull failed: ${userMessage}
+(Click for details)` : `\u274C Pull failed: ${userMessage}`;
+  const notice = new import_obsidian2.Notice(noticeText, NOTICE_DURATION_ERROR);
+  if (technicalDetail) {
+    notice.noticeEl.addEventListener("click", () => {
+      new GitErrorModal(app, `Pull failed: ${userMessage}`, technicalDetail).open();
+    });
+    notice.noticeEl.addClass("sgb-notice-clickable");
+  }
 }
 function resolveErrorContent(error) {
   if (error instanceof GitError) {
@@ -507,6 +574,11 @@ var SeamlessGitBackupPlugin = class extends import_obsidian3.Plugin {
      * executions if the user clicks the ribbon button multiple times quickly.
      */
     this.isBackupRunning = false;
+    /**
+     * Track whether a pull is currently in progress for the same reason.
+     * Pull and backup are also mutually exclusive — both touch the Git index.
+     */
+    this.isPullRunning = false;
   }
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
   /**
@@ -530,22 +602,38 @@ var SeamlessGitBackupPlugin = class extends import_obsidian3.Plugin {
     this.gitHandler = new GitHandler(vaultPath);
     this.addRibbonIcon(
       "git-commit-horizontal",
-      // Lucide icon name bundled with Obsidian
       "Seamless Git Backup: Perform backup now",
       (_event) => {
         void this.executeBackup();
       }
     );
+    this.addRibbonIcon(
+      "git-pull-request",
+      "Seamless Git Backup: Pull latest changes",
+      (_event) => {
+        void this.executePull();
+      }
+    );
     this.addCommand({
       id: "trigger-backup",
-      name: "Perform Git Backup",
-      // `callback` (not `checkCallback`) because this command is always
-      // available on desktop — no context check needed.
+      name: "Perform Git Backup (commit + push)",
       callback: () => {
         void this.executeBackup();
       }
     });
+    this.addCommand({
+      id: "trigger-pull",
+      name: "Pull latest changes from remote",
+      callback: () => {
+        void this.executePull();
+      }
+    });
     this.addSettingTab(new SeamlessGitBackupSettingTab(this.app, this));
+    if (this.settings.pullOnStartup) {
+      setTimeout(() => {
+        void this.executePull({ silent: !this.settings.notifyOnPull });
+      }, 0);
+    }
     console.log("[Seamless Git Backup] Plugin loaded successfully.");
   }
   /**
@@ -627,6 +715,51 @@ var SeamlessGitBackupPlugin = class extends import_obsidian3.Plugin {
       console.error("[Seamless Git Backup] Backup failed:", error);
     } finally {
       this.isBackupRunning = false;
+    }
+  }
+  // ─── Pull Execution ────────────────────────────────────────────────────────
+  /**
+   * Orchestrates a `git pull` with pre-flight checks and UI feedback.
+   *
+   * @param options.silent - When true, suppresses success/up-to-date notices.
+   *   Used for the startup auto-pull so Obsidian opens quietly when there is
+   *   nothing new. Errors are always shown regardless of this flag.
+   */
+  async executePull(options = {}) {
+    const { silent = false } = options;
+    if (this.isPullRunning) {
+      showWarningNotice("A pull is already in progress. Please wait.");
+      return;
+    }
+    if (this.isBackupRunning) {
+      showWarningNotice("A backup is in progress. Wait for it to finish before pulling.");
+      return;
+    }
+    this.isPullRunning = true;
+    const progressNotice = silent ? null : showPullInProgressNotice();
+    try {
+      await this.gitHandler.checkGitInstallation();
+      await this.gitHandler.checkIfRepo();
+      const result = await this.gitHandler.performPull();
+      progressNotice == null ? void 0 : progressNotice.hide();
+      if (!silent) {
+        if (result.alreadyUpToDate) {
+          showPullAlreadyUpToDateNotice();
+        } else {
+          showPullSuccessNotice();
+        }
+      } else if (!result.alreadyUpToDate) {
+        showPullSuccessNotice();
+      }
+      console.log(
+        `[Seamless Git Backup] Pull complete. Up-to-date: ${result.alreadyUpToDate}`
+      );
+    } catch (error) {
+      progressNotice == null ? void 0 : progressNotice.hide();
+      showPullErrorNotice(error, this.app);
+      console.error("[Seamless Git Backup] Pull failed:", error);
+    } finally {
+      this.isPullRunning = false;
     }
   }
 };

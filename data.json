@@ -1,0 +1,4 @@
+{
+  "commitMessageTemplate": "Vault backup: {{date}} at {{time}}",
+  "notifyOnNoChanges": true
+}

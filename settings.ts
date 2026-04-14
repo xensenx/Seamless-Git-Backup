@@ -42,6 +42,20 @@ export interface PluginSettings {
    * it noisy when they habitually press the backup button. Hence the toggle.
    */
   notifyOnNoChanges: boolean;
+
+  /**
+   * When true, automatically run `git pull` when Obsidian starts (i.e. when
+   * the plugin loads). Keeps the desktop vault in sync with any edits made
+   * on other devices (e.g. via the GitHub mobile app) without manual action.
+   */
+  pullOnStartup: boolean;
+
+  /**
+   * When true, show a notice after a successful pull describing what happened
+   * (already up-to-date, or that new changes were pulled). When false, the
+   * startup pull is completely silent on success — less intrusive on open.
+   */
+  notifyOnPull: boolean;
 }
 
 /**
@@ -55,6 +69,8 @@ export interface PluginSettings {
 export const DEFAULT_SETTINGS: PluginSettings = {
   commitMessageTemplate: "Vault backup: {{date}} at {{time}}",
   notifyOnNoChanges: true,
+  pullOnStartup: true,
+  notifyOnPull: true,
 };
 
 // ─── Commit Message Resolution ────────────────────────────────────────────────
@@ -182,6 +198,46 @@ export class SeamlessGitBackupSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.notifyOnNoChanges)
           .onChange(async (value) => {
             this.plugin.settings.notifyOnNoChanges = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // ── Pull Section ────────────────────────────────────────────────────
+    containerEl.createEl("h3", { text: "Pull (Sync from Remote)" });
+
+    containerEl.createEl("p", {
+      text: "Pull keeps your desktop vault in sync with edits made on other devices (e.g. via the GitHub mobile app).",
+      cls: "setting-item-description",
+    });
+
+    // Auto-pull on startup toggle
+    new Setting(containerEl)
+      .setName("Pull on startup")
+      .setDesc(
+        "Automatically run `git pull` every time Obsidian opens. " +
+          "Ensures your vault is up-to-date before you start working."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.pullOnStartup)
+          .onChange(async (value) => {
+            this.plugin.settings.pullOnStartup = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Notify on pull result toggle
+    new Setting(containerEl)
+      .setName("Show pull result notice")
+      .setDesc(
+        "Show a notice after a pull completes — whether new changes arrived or the vault was already up-to-date. " +
+          "Disable for a fully silent startup pull."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.notifyOnPull)
+          .onChange(async (value) => {
+            this.plugin.settings.notifyOnPull = value;
             await this.plugin.saveSettings();
           })
       );
