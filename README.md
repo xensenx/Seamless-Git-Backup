@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This is a  archived legacy project and is no longer maintained, Use latest plugin called [Secure-Smart-sync](https://github.com/Secure-Smart-Sync/Secure-Smart-Sync) for advance obsidian sync methods, you can still use the following plugin if backing up files using local git is your goal.
+
 # Seamless Git Backup
 
 A lightweight Obsidian plugin that enables one-click Git backups directly from within your vault.
